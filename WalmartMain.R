@@ -57,7 +57,7 @@ hist(log(train$Weekly_Sales), breaks = 30)
 
 # dispersion beween Weekly Sales and train features
 set.seed(101)
-sampleIndices <- sort(sample(1:nrow(train), 200)) # these indices are good for the train features and features plots
+sampleIndices <- sort(sample(1:nrow(train), 2000)) # these indices are good for the train features and features plots
 #pairs(log(Weekly_Sales) ~ Store + Dept + IsHoliday, train[sampleIndices, ]) 
 pairs(log(Weekly_Sales) ~ Store + Dept + IsHoliday, train, subset = sampleIndices) 
 
@@ -72,15 +72,17 @@ plot(table(features$IsHoliday))
 #Scatterplots of feaures against Weekly Sales
 sampleTrain <- as.list(train[sampleIndices, c(1, 3)])
 
-extractedFeatures <- matrix(NA, nrow = length(sampleIndices), 10)
+extractedFeatures <- matrix(NA, nrow = length(sampleIndices), 9)
 for (i in 1:length(sampleIndices)){  
   extractedFeatures[i, ] <- as.numeric(featureExtractor(as.numeric(sampleTrain$Store)[i], as.character(sampleTrain$Date)[i]))
 }
 
 extractedFeatures <- as.data.frame(extractedFeatures)
-names(extractedFeatures) <- names(features)[seq(3, 12)]
+extractedFeatures <- cbind(extractedFeatures, train$Weekly_Sales[sampleIndices])
+names(extractedFeatures) <- c(names(features)[seq(3, 11)], 'Weekly_Sales')
 
-pairs(extractedFeatures[, c(1,2,8,9,10)], col = log(train$Weekly_Sales[sampleIndices]))
+pairs(log(Weekly_Sales) ~ Temperature + Fuel_Price + CPI + Unemployment, extractedFeatures) 
+pairs(extractedFeatures[, c(1,2,8,9)], col = log(train$Weekly_Sales[sampleIndices]))
 
 ##############################
 #Model Building
