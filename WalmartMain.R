@@ -81,8 +81,9 @@ extractedFeatures <- as.data.frame(extractedFeatures)
 extractedFeatures <- cbind(extractedFeatures, train$Weekly_Sales[sampleIndices])
 names(extractedFeatures) <- c(names(features)[seq(3, 11)], 'Weekly_Sales')
 
-pairs(log(Weekly_Sales) ~ Temperature + Fuel_Price + CPI + Unemployment, extractedFeatures) 
-pairs(extractedFeatures[, c(1,2,8,9)], col = log(train$Weekly_Sales[sampleIndices]))
+pairs(log(Weekly_Sales) ~ Temperature + Fuel_Price + CPI + 
+        Unemployment + MarkDown1 + MarkDown3 + MarkDown4, extractedFeatures) 
+pairs(extractedFeatures[, c(1, 2, 3, 5, 6, 8, 9)], col = log(train$Weekly_Sales[sampleIndices]))
 
 ##############################
 #Model Building
@@ -95,7 +96,7 @@ trainIndices <- sample(1:nrow(train), 10000) # Number of samples considered for 
 
 #Extraction of features
 set.seed(103)
-sampleIndices <- sort(sample(1:nrow(train[trainIndices, ]), 200)) # these indices are useful for validation
+sampleIndices <- sort(sample(1:nrow(train[trainIndices, ]), nrow(train[trainIndices, ]) * 0.6)) # these indices are useful for validation
 sampleTrain <- as.list(train[trainIndices, ][, c(1, 3)])
 
 extractedFeatures <- matrix(NA, nrow = length(trainIndices), 9)
@@ -107,8 +108,18 @@ extractedFeatures <- as.data.frame(extractedFeatures)
 names(extractedFeatures) <- names(features)[seq(3, 11)]
 
 #Random Forest Modeling
-gbmWalmart <- gbm(Weekly_Sales ~ ., data = cbind(extractedFeatures, train[trainIndices, -3]), n.trees = 100000)
+cores <- detectCores()
+gbmWalmart <- gbm(Weekly_Sales ~ ., data = cbind(extractedFeatures, train[trainIndices, -3]), 
+                  n.trees = 100000, cv.folds = 5, n.cores = cores)
 summary(gbmWalmart)
+
+n.trees=seq(from=100,to=10000,by=100)
+predmat=predict(boost.boston,newdata=Boston[-train,],n.trees=n.trees)
+dim(predmat)
+berr=with(Boston[-train,],apply( (predmat-medv)^2,2,mean))
+plot(n.trees,berr,pch=19,ylab="Mean Squared Error", xlab="# Trees",main="Boosting Test Error")
+abline(h=min(test.err),col="red")
+
 plot(gbmWalmart, i="lstat")
 plot(gbmWalmart, i="rm")
 
