@@ -10,7 +10,7 @@ rm(list=ls(all=TRUE))
 require("gbm")
 require("glmnet")
 require("randomForest")
-require("MASS")
+require("Metrics")
 
 #Set Working Directory
 #workingDirectory <- 'D:/Wacax/Repos/March Madness'
@@ -110,13 +110,17 @@ names(extractedFeatures) <- names(features)[seq(3, 11)]
 #Random Forest Modeling
 cores <- detectCores()
 gbmWalmart <- gbm(Weekly_Sales ~ ., data = cbind(extractedFeatures[sampleIndices, ], train[trainIndices[sampleIndices], -3]), 
-                  n.trees = 1000, cv.folds = 5, n.cores = cores)
+                  n.trees = 40000, cv.folds = 5, n.cores = cores)
 summary(gbmWalmart)
 
-n.trees <- seq(from=10, to=1000, by= 50)
+n.trees <- seq(from=100, to=1000, by= 100)
 predictionGBM <- predict(gbmWalmart, newdata = cbind(extractedFeatures[-sampleIndices, ], train[trainIndices[-sampleIndices], -3]), 
                          n.trees = n.trees)
 dim(predictionGBM)
+
+#mean absolute error (WMAE)
+#error <- mae(train$Weekly_Sales[trainIndices[-sampleIndices]], predictionGBM[,1])
+errorVector <- apply(predictionGBM, 2, mae, train$Weekly_Sales[trainIndices[-sampleIndices]])
 
 berr=with(Boston[-train,],apply((predmat-medv)^2,2,mean))
 plot(n.trees,berr,pch=19,ylab="Mean Squared Error", xlab="# Trees",main="Boosting Test Error")
