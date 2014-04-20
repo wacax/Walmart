@@ -109,14 +109,16 @@ names(extractedFeatures) <- names(features)[seq(3, 11)]
 
 #Random Forest Modeling
 cores <- detectCores()
-gbmWalmart <- gbm(Weekly_Sales ~ ., data = cbind(extractedFeatures, train[trainIndices, -3]), 
-                  n.trees = 100000, cv.folds = 5, n.cores = cores)
+gbmWalmart <- gbm(Weekly_Sales ~ ., data = cbind(extractedFeatures[sampleIndices, ], train[trainIndices[sampleIndices], -3]), 
+                  n.trees = 1000, cv.folds = 5, n.cores = cores)
 summary(gbmWalmart)
 
-n.trees=seq(from=100,to=10000,by=100)
-predmat=predict(boost.boston,newdata=Boston[-train,],n.trees=n.trees)
-dim(predmat)
-berr=with(Boston[-train,],apply( (predmat-medv)^2,2,mean))
+n.trees <- seq(from=10, to=1000, by= 50)
+predictionGBM <- predict(gbmWalmart, newdata = cbind(extractedFeatures[-sampleIndices, ], train[trainIndices[-sampleIndices], -3]), 
+                         n.trees = n.trees)
+dim(predictionGBM)
+
+berr=with(Boston[-train,],apply((predmat-medv)^2,2,mean))
 plot(n.trees,berr,pch=19,ylab="Mean Squared Error", xlab="# Trees",main="Boosting Test Error")
 abline(h=min(test.err),col="red")
 
