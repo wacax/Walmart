@@ -37,10 +37,9 @@ sampleSubmission <- read.csv(paste0(dataDirectory, 'sampleSubmission.csv'), head
 train$Store <- as.factor(train$Store)
 train$Dept <- as.factor(train$Dept)
 train$IsHoliday <- as.factor(train$IsHoliday)
+stores$Type <- as.factor(stores$Type)
 
 #Data Exploration
-hist(log(train$Weekly_Sales), breaks = 30)
-
 dataSamples <- apply(features, 2, anonFun <- function(vector){
   return(head(unique(vector)))
 })
@@ -72,18 +71,18 @@ plot(table(features$IsHoliday))
 #Scatterplots of feaures against Weekly Sales
 sampleTrain <- as.list(train[sampleIndices, c(1, 3)])
 
-extractedFeatures <- matrix(NA, nrow = length(sampleIndices), 9)
+extractedFeatures <- matrix(NA, nrow = length(sampleIndices), 11)
 for (i in 1:length(sampleIndices)){  
   extractedFeatures[i, ] <- as.numeric(featureExtractor(as.numeric(sampleTrain$Store)[i], as.character(sampleTrain$Date)[i]))
 }
 
 extractedFeatures <- as.data.frame(extractedFeatures)
 extractedFeatures <- cbind(extractedFeatures, train$Weekly_Sales[sampleIndices])
-names(extractedFeatures) <- c(names(features)[seq(3, 11)], 'Weekly_Sales')
+names(extractedFeatures) <- c(names(stores)[seq(2, 3)], names(features)[seq(3, 11)], 'Weekly_Sales')
 
-pairs(log(Weekly_Sales) ~ Temperature + Fuel_Price + CPI + 
+pairs(log(Weekly_Sales) ~ Type + Size + Temperature + Fuel_Price + CPI + 
         Unemployment + MarkDown1 + MarkDown3 + MarkDown4, extractedFeatures) 
-pairs(extractedFeatures[, c(1, 2, 3, 5, 6, 8, 9)], col = log(train$Weekly_Sales[sampleIndices]))
+pairs(extractedFeatures[, c(-6, -9, -12)], col = log(train$Weekly_Sales[sampleIndices]))#sometimes it works, sometimes it doesn't
 
 ##############################
 #Model Building
@@ -101,18 +100,18 @@ set.seed(103)
 sampleIndices <- sort(sample(1:nrow(train[trainIndices, ]), nrow(train[trainIndices, ]) * 0.6)) # these indices are useful for validation
 sampleTrain <- as.list(train[trainIndices, ][, c(1, 3)])
 
-extractedFeatures <- matrix(NA, nrow = length(trainIndices), 9)
+extractedFeatures <- matrix(NA, nrow = length(trainIndices), 11)
 for (i in 1:length(trainIndices)){  
   extractedFeatures[i, ] <- as.numeric(featureExtractor(as.numeric(sampleTrain$Store)[i], as.character(sampleTrain$Date)[i]))
 }
 
 extractedFeatures <- as.data.frame(extractedFeatures)
-names(extractedFeatures) <- names(features)[seq(3, 11)]
+names(extractedFeatures) <- c(names(stores)[seq(2, 3)], names(features)[seq(3, 11)])
 
 #Modeling - Training
 cores <- detectCores()
 gbmWalmart <- gbm(Weekly_Sales ~ ., data = cbind(extractedFeatures[sampleIndices, ], train[trainIndices[sampleIndices], -3]), 
-                  n.trees = 100000, cv.folds = 5, n.cores = cores)
+                  n.trees = 100000, cv.folds = 2, n.cores = cores, verbose = TRUE)
 summary(gbmWalmart)
 
 n.trees <- seq(from=1000, to=100000, by= 1000)
@@ -130,14 +129,19 @@ abline(h = min(errorVector),col="red")
 
 #Test prediction
 #Test Features
-extractedFeatures <- matrix(NA, nrow = nrow(test), 9)
+extractedFeatures <- matrix(NA, nrow = nrow(test), 11)
 for (i in 1:nrow(test)){  
   extractedFeatures[i, ] <- as.numeric(featureExtractor(as.numeric(test$Store)[i], as.character(test$Date)[i]))
 }
 
 extractedFeatures <- as.data.frame(extractedFeatures)
-names(extractedFeatures) <- names(features)[seq(3, 11)]
+names(extractedFeatures) <- c(names(stores)[seq(2, 3)], names(features)[seq(3, 11)])
 
+#Predict
+n.trees <- seq(from=1000, to=100000, by= 1000)
+predictionGBM <- predict(gbmWalmart, newdata = cbind(extractedFeatures, test[, -3]), 
+                         n.trees = n.trees)
+dim(predictionGBM)
 
 #Lasso
 lassoWalmart <- glmnet(x = cbind(extractedFeatures, train[trainIndices, c(-3, -4)]), y = train$Weekly_Sales[trainIndices])
