@@ -89,12 +89,14 @@ pairs(extractedFeatures[, c(1, 2, 3, 5, 6, 8, 9)], col = log(train$Weekly_Sales[
 #Model Building
 #Tree Based Models
 
+#Tree Boosting
 #subsetting
 set.seed(101)
-trainIndices <- sample(1:nrow(train), 10000) # Number of samples considered for prototyping
+trainIndices <- sample(1:nrow(train), 20000) # Number of samples considered for prototyping
 #trainIndices <- sample(1:nrow(train), nrow(train)) # Use this line to use the complete dataset and shuffle the data
 
 #Extraction of features
+#Train
 set.seed(103)
 sampleIndices <- sort(sample(1:nrow(train[trainIndices, ]), nrow(train[trainIndices, ]) * 0.6)) # these indices are useful for validation
 sampleTrain <- as.list(train[trainIndices, ][, c(1, 3)])
@@ -107,33 +109,37 @@ for (i in 1:length(trainIndices)){
 extractedFeatures <- as.data.frame(extractedFeatures)
 names(extractedFeatures) <- names(features)[seq(3, 11)]
 
-#Random Forest Modeling
+#Modeling - Training
 cores <- detectCores()
 gbmWalmart <- gbm(Weekly_Sales ~ ., data = cbind(extractedFeatures[sampleIndices, ], train[trainIndices[sampleIndices], -3]), 
-                  n.trees = 40000, cv.folds = 5, n.cores = cores)
+                  n.trees = 100000, cv.folds = 5, n.cores = cores)
 summary(gbmWalmart)
 
-n.trees <- seq(from=100, to=1000, by= 100)
+n.trees <- seq(from=1000, to=100000, by= 1000)
 predictionGBM <- predict(gbmWalmart, newdata = cbind(extractedFeatures[-sampleIndices, ], train[trainIndices[-sampleIndices], -3]), 
                          n.trees = n.trees)
 dim(predictionGBM)
 
-#mean absolute error (WMAE)
-#error <- mae(train$Weekly_Sales[trainIndices[-sampleIndices]], predictionGBM[,1])
-errorVector <- apply(predictionGBM, 2, mae, train$Weekly_Sales[trainIndices[-sampleIndices]])
+#mean absolute error (MAE)
+#error <- mae(train$Weekly_Sales[trainIndices[-sampleIndices]], predictionGBM[,1]) #error for the single column of trees
+errorVector <- apply(predictionGBM, 2, mae, train$Weekly_Sales[trainIndices[-sampleIndices]]) #error for the whole matrix of predictions
 
-berr=with(Boston[-train,],apply((predmat-medv)^2,2,mean))
-plot(n.trees,berr,pch=19,ylab="Mean Squared Error", xlab="# Trees",main="Boosting Test Error")
-abline(h=min(test.err),col="red")
+#Plot of Number of Trees vs. Error.
+plot(n.trees, errorVector, pch=19, ylab= "Mean Absolute Error (MAE)", xlab="# Trees",main="Boosting Test Error")
+abline(h = min(errorVector),col="red")
 
-plot(gbmWalmart, i="lstat")
-plot(gbmWalmart, i="rm")
+#Test prediction
+#Test Features
+extractedFeatures <- matrix(NA, nrow = nrow(test), 9)
+for (i in 1:nrow(test)){  
+  extractedFeatures[i, ] <- as.numeric(featureExtractor(as.numeric(test$Store)[i], as.character(test$Date)[i]))
+}
 
+extractedFeatures <- as.data.frame(extractedFeatures)
+names(extractedFeatures) <- names(features)[seq(3, 11)]
+
+
+#Lasso
 lassoWalmart <- glmnet(x = cbind(extractedFeatures, train[trainIndices, c(-3, -4)]), y = train$Weekly_Sales[trainIndices])
 rfWalmart <- randomForest(Weekly_Sales ~ ., data = cbind(extractedFeatures, train[trainIndices, -3]), subset = sampleIndices)
 rfWalmart <- randomForest(Weekly_Sales ~ ., data = train[trainIndices, -3], subset = sampleIndices)
-
-#GLM
-DummyModel <- glm(formula = Weekly_Sales ~ IsHoliday + Store + Dept, data = train)
-#GlmNet
-#DummyModel <- glmnet(x = cbind(train$IsHoliday, as.factor(train$Store), as.factor(train$Dept)) , y = train$Weekly_Sales, family = 'binomial')
