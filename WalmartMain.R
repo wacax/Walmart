@@ -30,7 +30,7 @@ stores <- read.csv(paste0(dataDirectory, 'stores.csv'), header = TRUE, stringsAs
 train <- read.csv(paste0(dataDirectory, 'train.csv'), header = TRUE, stringsAsFactors = FALSE, na.strings=c("", "NA", "NULL"))
 test <- read.csv(paste0(dataDirectory, 'test.csv'), header = TRUE, stringsAsFactors = FALSE, na.strings=c("", "NA", "NULL"))
 
-sampleSubmission <- read.csv(paste0(dataDirectory, 'sampleSubmission.csv'), header = TRUE, stringsAsFactors = FALSE, na.strings=c("", "NA", "NULL"))
+submissionTemplate <- read.csv(paste0(dataDirectory, 'sampleSubmission.csv'), header = TRUE, stringsAsFactors = FALSE, na.strings=c("", "NA", "NULL"))
 
 #############################
 #Data Preprocessing
@@ -91,13 +91,13 @@ pairs(extractedFeatures[, c(-6, -9, -12)], col = log(train$Weekly_Sales[sampleIn
 #Tree Boosting
 #subsetting
 set.seed(101)
-trainIndices <- sample(1:nrow(train), 20000) # Number of samples considered for prototyping
+trainIndices <- sample(1:nrow(train), 15000) # Number of samples considered for prototyping
 #trainIndices <- sample(1:nrow(train), nrow(train)) # Use this line to use the complete dataset and shuffle the data
 
 #Extraction of features
 #Train
 set.seed(103)
-sampleIndices <- sort(sample(1:nrow(train[trainIndices, ]), nrow(train[trainIndices, ]) * 0.6)) # these indices are useful for validation
+sampleIndices <- sort(sample(1:nrow(train[trainIndices, ]), floor(nrow(train[trainIndices, ]) * 0.6))) # these indices are useful for validation
 sampleTrain <- as.list(train[trainIndices, ][, c(1, 3)])
 
 extractedFeatures <- matrix(NA, nrow = length(trainIndices), 11)
@@ -109,12 +109,54 @@ extractedFeatures <- as.data.frame(extractedFeatures)
 names(extractedFeatures) <- c(names(stores)[seq(2, 3)], names(features)[seq(3, 11)])
 
 #Modeling - Training
-cores <- detectCores()
-gbmWalmart <- gbm(Weekly_Sales ~ ., data = cbind(extractedFeatures[sampleIndices, ], train[trainIndices[sampleIndices], -3]), 
-                  n.trees = 100000, cv.folds = 2, n.cores = cores, verbose = TRUE)
-summary(gbmWalmart)
+amountOfTrees <- 50000
+NumberofCVFolds <- 5
+cores <- NumberofCVFolds
 
-n.trees <- seq(from=1000, to=100000, by= 1000)
+if (NumberofCVFolds > 3){
+  cores <- detectCores() - 1
+}
+
+#interaction.depth X-validation
+treeDepth <- 5
+
+#trainErrorVector <- matrix(NA, nrow = treeDepth, length(amountOfTrees))
+#cvErrorVector <- matrix(NA, nrow = treeDepth, length(amountOfTrees))
+#maeErrorVector <- matrix(NA, nrow = treeDepth, length(seq(from = 1000, to = amountOfTrees, by = 1000)))
+  
+trainError <- rep(NA, treeDepth)
+cvError <- rep(NA, treeDepth)
+maeError <- rep(NA, treeDepth)
+
+for(ii in 1:treeDepth){
+  gbmWalmart <- gbm(Weekly_Sales ~ ., data = cbind(extractedFeatures[sampleIndices, ], train[trainIndices[sampleIndices], -3]), 
+                    n.trees = amountOfTrees, cv.folds = NumberofCVFolds, n.cores = cores, interaction.depth = ii, verbose = TRUE)
+  trainError[ii] <- min(gbmWalmart$train.error)
+  cvError[ii] <- gbm.perf(gbmWalmart, plot.it = FALSE, method = 'cv')
+  #mae error
+  n.trees <- seq(from = 1000, to = amountOfTrees, by = 1000)
+  predictionGBM <- predict(gbmWalmart, newdata = cbind(extractedFeatures[-sampleIndices, ], train[trainIndices[-sampleIndices], -3]), 
+                           n.trees = n.trees)
+  errorVector <- apply(predictionGBM, 2, mae, train$Weekly_Sales[trainIndices[-sampleIndices]]) #error for the whole array of predictions
+  maeError[ii] <- min(errorVector) 
+  #error Vectors
+  #trainErrorVector[ii,] <- gbmWalmart$train.error
+  #cvErrorVector[ii] <- gbmWalmart$cv.error
+  #maeError[ii, ] <- errorVector  
+}
+
+#Use best hiperparameters
+gbmWalmart <- gbm(Weekly_Sales ~ ., data = cbind(extractedFeatures[sampleIndices, ], train[trainIndices[sampleIndices], -3]), 
+                  n.trees = amountOfTrees, cv.folds = NumberofCVFolds, n.cores = cores, interaction.depth = ?, verbose = TRUE) #input interaction.depth
+summary(gbmWalmart)
+# check performance using an out-of-bag estimator
+best.iter <- gbm.perf(gbmWalmart,method="OOB")
+print(best.iter)
+# check performance using 5-fold cross-validation
+best.iter <- gbm.perf(gbmWalmart,method="cv")
+print(best.iter)
+
+n.trees <- seq(from = 1000, to = amountOfTrees, by = 1000)
 predictionGBM <- predict(gbmWalmart, newdata = cbind(extractedFeatures[-sampleIndices, ], train[trainIndices[-sampleIndices], -3]), 
                          n.trees = n.trees)
 dim(predictionGBM)
@@ -127,6 +169,9 @@ errorVector <- apply(predictionGBM, 2, mae, train$Weekly_Sales[trainIndices[-sam
 plot(n.trees, errorVector, pch=19, ylab= "Mean Absolute Error (MAE)", xlab="# Trees",main="Boosting Test Error")
 abline(h = min(errorVector),col="red")
 
+#Save Model
+save(gbmWalmart, file = '60%gbmAdditive.RData')
+
 #Test prediction
 #Test Features
 extractedFeatures <- matrix(NA, nrow = nrow(test), 11)
@@ -138,10 +183,16 @@ extractedFeatures <- as.data.frame(extractedFeatures)
 names(extractedFeatures) <- c(names(stores)[seq(2, 3)], names(features)[seq(3, 11)])
 
 #Predict
-n.trees <- seq(from=1000, to=100000, by= 1000)
+n.trees <- seq(from=1000, to=amountOfTrees, by= 1000)
 predictionGBM <- predict(gbmWalmart, newdata = cbind(extractedFeatures, test[, -3]), 
                          n.trees = n.trees)
 dim(predictionGBM)
+
+#Save .csv file 
+bestPrediction <- which.min(abs(n.trees - which.min(gbmWalmart$cv.error)))
+submissionTemplate$Weekly_Sales <- predictionGBM[, bestPrediction]
+#submissionTemplate$Weekly_Sales <- predictionGBM[, errorVector %in% min(errorVector)]
+write.csv(submissionTemplate, file = "predictionI.csv", row.names = FALSE)
 
 #Lasso
 lassoWalmart <- glmnet(x = cbind(extractedFeatures, train[trainIndices, c(-3, -4)]), y = train$Weekly_Sales[trainIndices])
