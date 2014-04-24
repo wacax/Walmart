@@ -132,7 +132,8 @@ for(ii in 1:treeDepth){
   gbmWalmart <- gbm(Weekly_Sales ~ ., data = cbind(extractedFeatures[sampleIndices, ], train[trainIndices[sampleIndices], -3]), 
                     n.trees = amountOfTrees, cv.folds = NumberofCVFolds, n.cores = cores, interaction.depth = ii, verbose = TRUE)
   trainError[ii] <- min(gbmWalmart$train.error)
-  cvError[ii] <- gbm.perf(gbmWalmart, plot.it = FALSE, method = 'cv')
+  cvError[ii] <- min(gbmWalmart$cv.error)
+  #cvError[ii] <- gbm.perf(gbmWalmart, plot.it = FALSE, method = 'cv')
   #mae error
   n.trees <- seq(from = 1000, to = amountOfTrees, by = 1000)
   predictionGBM <- predict(gbmWalmart, newdata = cbind(extractedFeatures[-sampleIndices, ], train[trainIndices[-sampleIndices], -3]), 
@@ -145,15 +146,31 @@ for(ii in 1:treeDepth){
   #maeError[ii, ] <- errorVector  
 }
 
+#Plotting Errors Train Error vs. Cross Validation
+matplot(1:treeDepth, cbind(trainError, cvError), pch = 19, col = c('red','blue'), type = 'b', ylab = 'Mean Squared Error')
+legend('topright', legend = c('Train','CV'), pch = 19, col = c('red', 'blue'))
+
+#Plotting Error Mae Errors
+matplot(1:treeDepth, maeError, pch = 19, col = 'green', type = 'b', ylab = 'Mean Squared Error')
+legend('topright', legend = 'Mean Absolute Error', pch = 19, col = 'green')
+
+#Select best tree depth
+if(which.min(cvError) == which.min(maeError)){
+  optimalTreeDepth <- which.min(maeError) 
+} else {
+  optimalTreeDepth <- which.min(cvError)
+}
+
 #Use best hiperparameters
 gbmWalmart <- gbm(Weekly_Sales ~ ., data = cbind(extractedFeatures[sampleIndices, ], train[trainIndices[sampleIndices], -3]), 
-                  n.trees = amountOfTrees, cv.folds = NumberofCVFolds, n.cores = cores, interaction.depth = ?, verbose = TRUE) #input interaction.depth
+                  n.trees = amountOfTrees, cv.folds = NumberofCVFolds, n.cores = cores,
+                  interaction.depth = optimalTreeDepth, verbose = TRUE) #input interaction.depth
 summary(gbmWalmart)
 # check performance using an out-of-bag estimator
 best.iter <- gbm.perf(gbmWalmart,method="OOB")
 print(best.iter)
 # check performance using 5-fold cross-validation
-best.iter <- gbm.perf(gbmWalmart,method="cv")
+best.iter <- gbm.perf(gbmWalmart, method="cv")
 print(best.iter)
 
 n.trees <- seq(from = 1000, to = amountOfTrees, by = 1000)
@@ -166,7 +183,7 @@ dim(predictionGBM)
 errorVector <- apply(predictionGBM, 2, mae, train$Weekly_Sales[trainIndices[-sampleIndices]]) #error for the whole matrix of predictions
 
 #Plot of Number of Trees vs. Error.
-plot(n.trees, errorVector, pch=19, ylab= "Mean Absolute Error (MAE)", xlab="# Trees",main="Boosting Test Error")
+plot(n.trees, errorVector, pch=19, ylab= "Mean Absolute Error (MAE)", xlab="# Trees",main="Boosting Test Error, Mean Absolute Error")
 abline(h = min(errorVector),col="red")
 
 #Save Model
