@@ -8,8 +8,8 @@ rm(list=ls(all=TRUE))
 
 #Load/install libraries
 require("gbm")
-require("glmnet")
-require("randomForest")
+#require("glmnet")
+#require("randomForest")
 require("Metrics")
 
 #Set Working Directory
@@ -91,8 +91,9 @@ pairs(extractedFeatures[, c(-6, -9, -12)], col = log(train$Weekly_Sales[sampleIn
 #Tree Boosting
 #subsetting
 set.seed(101)
-trainIndices <- sample(1:nrow(train), 15000) # Number of samples considered for prototyping
-#trainIndices <- sample(1:nrow(train), nrow(train)) # Use this line to use the complete dataset and shuffle the data
+#trainIndices <- sample(1:nrow(train), 25000) # Number of samples considered for prototyping
+trainIndices <- sample(1:nrow(train), nrow(train)) # Use this line to use the complete dataset and shuffle the data
+
 
 #Extraction of features
 #Train
@@ -109,7 +110,7 @@ extractedFeatures <- as.data.frame(extractedFeatures)
 names(extractedFeatures) <- c(names(stores)[seq(2, 3)], names(features)[seq(3, 11)])
 
 #Modeling - Training
-amountOfTrees <- 50000
+amountOfTrees <- 60000
 NumberofCVFolds <- 5
 cores <- NumberofCVFolds
 
@@ -147,11 +148,11 @@ for(ii in 1:treeDepth){
 }
 
 #Plotting Errors Train Error vs. Cross Validation
-matplot(1:treeDepth, cbind(trainError, cvError), pch = 19, col = c('red','blue'), type = 'b', ylab = 'Mean Squared Error')
+matplot(1:treeDepth, cbind(trainError, cvError), pch = 19, col = c('red','blue'), type = 'b', ylab = 'Mean Squared Error', xlab = 'Tree Depth')
 legend('topright', legend = c('Train','CV'), pch = 19, col = c('red', 'blue'))
 
-#Plotting Error Mae Errors
-matplot(1:treeDepth, maeError, pch = 19, col = 'green', type = 'b', ylab = 'Mean Squared Error')
+#Plotting MAE Errors
+matplot(1:treeDepth, maeError, pch = 19, col = 'green', type = 'b', ylab = 'Mean Squared Error', xlab = 'Tree Depth')
 legend('topright', legend = 'Mean Absolute Error', pch = 19, col = 'green')
 
 #Select best tree depth
@@ -162,9 +163,10 @@ if(which.min(cvError) == which.min(maeError)){
 }
 
 #Use best hiperparameters
-gbmWalmart <- gbm(Weekly_Sales ~ ., data = cbind(extractedFeatures[sampleIndices, ], train[trainIndices[sampleIndices], -3]), 
+gbmWalmart <- gbm(Weekly_Sales ~ ., data = cbind(extractedFeatures, train[trainIndices, -3]), 
                   n.trees = amountOfTrees, cv.folds = NumberofCVFolds, n.cores = cores,
                   interaction.depth = optimalTreeDepth, verbose = TRUE) #input interaction.depth
+
 summary(gbmWalmart)
 # check performance using an out-of-bag estimator
 best.iter <- gbm.perf(gbmWalmart,method="OOB")
