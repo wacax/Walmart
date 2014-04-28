@@ -7,6 +7,7 @@
 rm(list=ls(all=TRUE))
 
 #Load/install libraries
+require("ggplot2")
 require("gbm")
 #require("glmnet")
 #require("randomForest")
@@ -21,6 +22,7 @@ dataDirectory <- '/home/wacax/Documents/Wacax/Kaggle Data Analysis/Walmart/Data/
 
 #Load functions
 source(paste0(workingDirectory, 'featureExtractor.R'))
+source(paste0(workingDirectory, 'gridCrossValidationGBM.R'))
 
 ###########################
 #Load Data
@@ -37,9 +39,15 @@ submissionTemplate <- read.csv(paste0(dataDirectory, 'sampleSubmission.csv'), he
 train$Store <- as.factor(train$Store)
 train$Dept <- as.factor(train$Dept)
 train$IsHoliday <- as.factor(train$IsHoliday)
+train$Date <- as.Date(train$Date, format = "%Y-%m-%d")
+test$Store <- as.factor(test$Store)
+test$Dept <- as.factor(test$Dept)
+test$IsHoliday <- as.factor(test$IsHoliday)
+test$Date <- as.Date(test$Date, format = "%Y-%m-%d")
 stores$Type <- as.factor(stores$Type)
 
 #Data Exploration
+#Unique Samples
 dataSamples <- apply(features, 2, anonFun <- function(vector){
   return(head(unique(vector)))
 })
@@ -51,10 +59,17 @@ uniqueSamples <- apply(features, 2, anonFun <- function(vector){
 print(uniqueSamples)
 
 #Graphs
+#Exploratory Histogram of Walmart sales over time on ggplot2
+dateSpread <- ggplot(train, aes(x = Date)) + geom_histogram() + scale_x_date()
+print(dateSpread, height = 6, width = 8)
+
 #Histogram of weekly sales dispersion
 hist(log(train$Weekly_Sales), breaks = 30)
+#in ggplot2
+salesSpread <- ggplot(train, aes(x = log(Weekly_Sales))) + geom_histogram() + scale_x_continuous()
+print(salesSpread, height = 6, width = 8)
 
-# dispersion beween Weekly Sales and train features
+# dispersion between Weekly Sales and train features
 set.seed(101)
 sampleIndices <- sort(sample(1:nrow(train), 2000)) # these indices are good for the train features and features plots
 #pairs(log(Weekly_Sales) ~ Store + Dept + IsHoliday, train[sampleIndices, ]) 
@@ -91,9 +106,8 @@ pairs(extractedFeatures[, c(-6, -9, -12)], col = log(train$Weekly_Sales[sampleIn
 #Tree Boosting
 #subsetting
 set.seed(101)
-#trainIndices <- sample(1:nrow(train), 25000) # Number of samples considered for prototyping
-trainIndices <- sample(1:nrow(train), nrow(train)) # Use this line to use the complete dataset and shuffle the data
-
+trainIndices <- sample(1:nrow(train), 1000) # Number of samples considered for prototyping
+#trainIndices <- sample(1:nrow(train), nrow(train)) # Use this line to use the complete dataset and shuffle the data
 
 #Extraction of features
 #Train
@@ -118,54 +132,19 @@ if (NumberofCVFolds > 3){
   cores <- detectCores() - 1
 }
 
-#interaction.depth X-validation
-treeDepth <- 5
+treeDepth <- 5 #interaction.depth X-validation
 
-#trainErrorVector <- matrix(NA, nrow = treeDepth, length(amountOfTrees))
-#cvErrorVector <- matrix(NA, nrow = treeDepth, length(amountOfTrees))
-#maeErrorVector <- matrix(NA, nrow = treeDepth, length(seq(from = 1000, to = amountOfTrees, by = 1000)))
-  
-trainError <- rep(NA, treeDepth)
-cvError <- rep(NA, treeDepth)
-maeError <- rep(NA, treeDepth)
-
-for(ii in 1:treeDepth){
-  gbmWalmart <- gbm(Weekly_Sales ~ ., data = cbind(extractedFeatures[sampleIndices, ], train[trainIndices[sampleIndices], -3]), 
-                    n.trees = amountOfTrees, cv.folds = NumberofCVFolds, n.cores = cores, interaction.depth = ii, verbose = TRUE)
-  trainError[ii] <- min(gbmWalmart$train.error)
-  cvError[ii] <- min(gbmWalmart$cv.error)
-  #cvError[ii] <- gbm.perf(gbmWalmart, plot.it = FALSE, method = 'cv')
-  #mae error
-  n.trees <- seq(from = 1000, to = amountOfTrees, by = 1000)
-  predictionGBM <- predict(gbmWalmart, newdata = cbind(extractedFeatures[-sampleIndices, ], train[trainIndices[-sampleIndices], -3]), 
-                           n.trees = n.trees)
-  errorVector <- apply(predictionGBM, 2, mae, train$Weekly_Sales[trainIndices[-sampleIndices]]) #error for the whole array of predictions
-  maeError[ii] <- min(errorVector) 
-  #error Vectors
-  #trainErrorVector[ii,] <- gbmWalmart$train.error
-  #cvErrorVector[ii] <- gbmWalmart$cv.error
-  #maeError[ii, ] <- errorVector  
-}
-
-#Plotting Errors Train Error vs. Cross Validation
-matplot(1:treeDepth, cbind(trainError, cvError), pch = 19, col = c('red','blue'), type = 'b', ylab = 'Mean Squared Error', xlab = 'Tree Depth')
-legend('topright', legend = c('Train','CV'), pch = 19, col = c('red', 'blue'))
-
-#Plotting MAE Errors
-matplot(1:treeDepth, maeError, pch = 19, col = 'green', type = 'b', ylab = 'Mean Squared Error', xlab = 'Tree Depth')
-legend('topright', legend = 'Mean Absolute Error', pch = 19, col = 'green')
-
-#Select best tree depth
-if(which.min(cvError) == which.min(maeError)){
-  optimalTreeDepth <- which.min(maeError) 
-} else {
-  optimalTreeDepth <- which.min(cvError)
-}
+##grid cross validation
+gridCrossValidationGBM <- gridCrossValidationGBM(Weekly_Sales ~ ., cbind(extractedFeatures, train[trainIndices, -3]), sampleIndices, amountOfTrees,
+                                                 NumberofCVFolds, cores, seq(1, 9, 3), c(0.001, 0.003, 0.01))
+##
+optimalTreeDepth <- gridCrossValidationGBM[1]
+optimalShrinkage <- gridCrossValidationGBM[2]
 
 #Use best hiperparameters
 gbmWalmart <- gbm(Weekly_Sales ~ ., data = cbind(extractedFeatures, train[trainIndices, -3]), 
                   n.trees = amountOfTrees, cv.folds = NumberofCVFolds, n.cores = cores,
-                  interaction.depth = optimalTreeDepth, verbose = TRUE) #input interaction.depth
+                  interaction.depth = optimalTreeDepth, shrinkage = , verbose = TRUE) #input interaction.depth
 
 summary(gbmWalmart)
 # check performance using an out-of-bag estimator
