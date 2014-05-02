@@ -1,5 +1,5 @@
 #Walmart Competition
-#ver 0.1
+#ver 0.2
 #
 
 #########################
@@ -106,8 +106,8 @@ pairs(extractedFeatures[, c(-6, -9, -12)], col = log(train$Weekly_Sales[sampleIn
 #Tree Boosting
 #subsetting
 set.seed(101)
-trainIndices <- sample(1:nrow(train), 1000) # Number of samples considered for prototyping
-#trainIndices <- sample(1:nrow(train), nrow(train)) # Use this line to use the complete dataset and shuffle the data
+#trainIndices <- sample(1:nrow(train), 500) # Number of samples considered for prototyping, it has to be greater than 500 the sampling size, otherwise it will throw an error saying that more data is required 
+trainIndices <- sample(1:nrow(train), nrow(train)) # Use this line to use the complete dataset and shuffle the data
 
 #Extraction of features
 #Train
@@ -136,20 +136,17 @@ treeDepth <- 5 #interaction.depth X-validation
 
 ##grid cross validation
 gridCrossValidationGBM <- gridCrossValidationGBM(Weekly_Sales ~ ., cbind(extractedFeatures, train[trainIndices, -3]), sampleIndices, amountOfTrees,
-                                                 NumberofCVFolds, cores, seq(1, 9, 3), c(0.001, 0.003, 0.01))
+                                                 NumberofCVFolds, cores, seq(1, 6), c(0.001, 0.003))
 ##
 optimalTreeDepth <- gridCrossValidationGBM[1]
 optimalShrinkage <- gridCrossValidationGBM[2]
 
 #Use best hiperparameters
 gbmWalmart <- gbm(Weekly_Sales ~ ., data = cbind(extractedFeatures, train[trainIndices, -3]), 
-                  n.trees = amountOfTrees, cv.folds = NumberofCVFolds, n.cores = cores,
-                  interaction.depth = optimalTreeDepth, shrinkage = , verbose = TRUE) #input interaction.depth
+                  n.trees = amountOfTrees, n.cores = cores, interaction.depth = optimalTreeDepth,
+                  shrinkage = optimalShrinkage, verbose = TRUE, distrubution = 'gaussian') #input interaction.depth
 
 summary(gbmWalmart)
-# check performance using an out-of-bag estimator
-best.iter <- gbm.perf(gbmWalmart,method="OOB")
-print(best.iter)
 # check performance using 5-fold cross-validation
 best.iter <- gbm.perf(gbmWalmart, method="cv")
 print(best.iter)
