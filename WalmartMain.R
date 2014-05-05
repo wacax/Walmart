@@ -198,8 +198,3 @@ bestPrediction <- which.min(abs(n.trees - which.min(gbmWalmart$cv.error)))
 submissionTemplate$Weekly_Sales <- predictionGBM[, bestPrediction]
 #submissionTemplate$Weekly_Sales <- predictionGBM[, errorVector %in% min(errorVector)]
 write.csv(submissionTemplate, file = "predictionII.csv", row.names = FALSE)
-
-#Lasso
-lassoWalmart <- glmnet(x = cbind(extractedFeatures, train[trainIndices, c(-3, -4)]), y = train$Weekly_Sales[trainIndices])
-rfWalmart <- randomForest(Weekly_Sales ~ ., data = cbind(extractedFeatures, train[trainIndices, -3]), subset = sampleIndices)
-rfWalmart <- randomForest(Weekly_Sales ~ ., data = train[trainIndices, -3], subset = sampleIndices)
