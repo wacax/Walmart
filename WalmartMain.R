@@ -14,10 +14,9 @@ require("gbm")
 require("Metrics")
 
 #Set Working Directory
-#workingDirectory <- 'D:/Wacax/Repos/March Madness'
 workingDirectory <- '/home/wacax/Documents/Wacax/Kaggle Data Analysis/Walmart/Walmart Competition/'
 setwd(workingDirectory)
-#dataDirectory <- 'D:/Wacax/Repos/March Madness/Data/'
+
 dataDirectory <- '/home/wacax/Documents/Wacax/Kaggle Data Analysis/Walmart/Data/'
 
 #Load functions
@@ -93,6 +92,7 @@ for (i in 1:length(sampleIndices)){
 
 extractedFeatures <- as.data.frame(extractedFeatures)
 extractedFeatures <- cbind(extractedFeatures, train$Weekly_Sales[sampleIndices])
+extractedFeatures$Type <- as.factor(extractedFeatures$Type)
 names(extractedFeatures) <- c(names(stores)[seq(2, 3)], names(features)[seq(3, 11)], 'Weekly_Sales')
 
 pairs(log(Weekly_Sales) ~ Type + Size + Temperature + Fuel_Price + CPI + 
@@ -103,10 +103,15 @@ pairs(extractedFeatures[, c(-6, -9, -12)], col = log(train$Weekly_Sales[sampleIn
 #Model Building
 #Tree Based Models
 
+#Important
+#date matching is faster by a factor of 4 when dates are class character
+train$Date <- as.character(train$Date)
+test$Date <- as.character(test$Date)
+
 #Tree Boosting
 #subsetting
 set.seed(101)
-#trainIndices <- sample(1:nrow(train), 500) # Number of samples considered for prototyping, it has to be greater than 500 the sampling size, otherwise it will throw an error saying that more data is required 
+#trainIndices <- sample(1:nrow(train), 5000) # Number of samples considered for prototyping / best parameter selection, it has to be greater than 500 the sampling size, otherwise it will throw an error saying that more data is required 
 trainIndices <- sample(1:nrow(train), nrow(train)) # Use this line to use the complete dataset and shuffle the data
 
 #Extraction of features
@@ -118,10 +123,13 @@ sampleTrain <- as.list(train[trainIndices, ][, c(1, 3)])
 extractedFeatures <- matrix(NA, nrow = length(trainIndices), 11)
 for (i in 1:length(trainIndices)){  
   extractedFeatures[i, ] <- as.numeric(featureExtractor(as.numeric(sampleTrain$Store)[i], as.character(sampleTrain$Date)[i]))
+  
+  #print(paste('Feature', i - 1, 'extracted'))
 }
 
 extractedFeatures <- as.data.frame(extractedFeatures)
 names(extractedFeatures) <- c(names(stores)[seq(2, 3)], names(features)[seq(3, 11)])
+extractedFeatures$Type <- as.factor(extractedFeatures$Type)
 
 #Modeling - Training
 amountOfTrees <- 60000
@@ -144,7 +152,7 @@ optimalShrinkage <- gridCrossValidationGBM[2]
 #Use best hiperparameters
 gbmWalmart <- gbm(Weekly_Sales ~ ., data = cbind(extractedFeatures, train[trainIndices, -3]), 
                   n.trees = amountOfTrees, n.cores = cores, interaction.depth = optimalTreeDepth,
-                  shrinkage = optimalShrinkage, verbose = TRUE, distrubution = 'gaussian') #input interaction.depth
+                  shrinkage = optimalShrinkage, verbose = TRUE, distribution = 'gaussian') #input interaction.depth
 
 summary(gbmWalmart)
 # check performance using 5-fold cross-validation
@@ -165,7 +173,8 @@ plot(n.trees, errorVector, pch=19, ylab= "Mean Absolute Error (MAE)", xlab="# Tr
 abline(h = min(errorVector),col="red")
 
 #Save Model
-save(gbmWalmart, file = '60%gbmAdditive.RData')
+#save(gbmWalmart, file = '60%gbmAdditive.RData')
+save(gbmWalmart, file = 'fullGBM5tree.RData')
 
 #Test prediction
 #Test Features
@@ -176,6 +185,7 @@ for (i in 1:nrow(test)){
 
 extractedFeatures <- as.data.frame(extractedFeatures)
 names(extractedFeatures) <- c(names(stores)[seq(2, 3)], names(features)[seq(3, 11)])
+extractedFeatures$Type <- as.factor(extractedFeatures$Type)
 
 #Predict
 n.trees <- seq(from=1000, to=amountOfTrees, by= 1000)
@@ -187,7 +197,7 @@ dim(predictionGBM)
 bestPrediction <- which.min(abs(n.trees - which.min(gbmWalmart$cv.error)))
 submissionTemplate$Weekly_Sales <- predictionGBM[, bestPrediction]
 #submissionTemplate$Weekly_Sales <- predictionGBM[, errorVector %in% min(errorVector)]
-write.csv(submissionTemplate, file = "predictionI.csv", row.names = FALSE)
+write.csv(submissionTemplate, file = "predictionII.csv", row.names = FALSE)
 
 #Lasso
 lassoWalmart <- glmnet(x = cbind(extractedFeatures, train[trainIndices, c(-3, -4)]), y = train$Weekly_Sales[trainIndices])

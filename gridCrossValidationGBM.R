@@ -1,6 +1,6 @@
 gridCrossValidationGBM <- function(formulaModel, dataModel, subset, numberOfTrees,
                                     xValFolds, coresAmount, treeDepthVector, shrinkageVector,
-                                   plot = TRUE, distrubutionSelected = 'gaussian'){
+                                   plot = TRUE, distributionSelected = 'gaussian'){
   
   #Cross validates features selected by the user
   grid <- expand.grid(treeDepthVector, shrinkageVector, stringsAsFactors = TRUE) #this creates all possible combinations of the elements in treeDepthVector and shrinkageVector
@@ -14,7 +14,7 @@ gridCrossValidationGBM <- function(formulaModel, dataModel, subset, numberOfTree
     model <- gbm(formulaModel, data = dataModel[subset, ], 
                 n.trees = numberOfTrees, cv.folds = xValFolds, n.cores = cores,
                 train.fraction = 0.8, interaction.depth = grid[i, 1], shrinkage = grid[i, 2], 
-                verbose = TRUE, distrubution = distrubutionSelected)
+                verbose = TRUE, distribution = distributionSelected)
     trainError[i] <- min(model$train.error)
     oobError[i] <- min(model$valid.error)
     cvError[i] <- min(model$cv.error)
@@ -24,7 +24,9 @@ gridCrossValidationGBM <- function(formulaModel, dataModel, subset, numberOfTree
     predictionGBM <- predict(model, newdata = cbind(extractedFeatures[-subset, ], train[trainIndices[-subset], -3]), 
                            n.trees = n.trees)
     errorVector <- apply(predictionGBM, 2, mae, train$Weekly_Sales[trainIndices[-subset]]) #error for the whole array of predictions
-    maeError[i] <- min(errorVector)   
+    maeError[i] <- min(errorVector)  
+    print(paste('Error for tree depth', grid[i, 1], 'and shrinage', grid[i, 1], 'calculated.',
+                'Out of', grid[nrow(grid), 1], 'and', grid[nrow(grid), 2]))
   }
   
   if(plot == TRUE){
